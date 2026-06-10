@@ -62,6 +62,23 @@ SEEDS = [
 # full back-catalogue of articles (page=0 is the same as the bare URL).
 SEEDS += [f"/investors/insights?page={n}" for n in range(0, 17)]
 
+# Targeted subset: FINRA's beginner-friendly crypto investor-education pages —
+# the crypto-assets hub, its two sub-pages, and the explainer/scam articles it
+# links to. Used by `--crypto`, which fetches exactly these with link-following
+# OFF so the request footprint stays tiny (~9 hits). That matters because the
+# site rate-limits aggressively; a focused run is the polite way back in.
+CRYPTO_SEEDS = [
+    "/investors/investing/investment-products/crypto-assets",
+    "/investors/investing/investment-products/crypto-assets/learn-more",
+    "/investors/investing/investment-products/crypto-assets/risks",
+    "/investors/insights/bitcoin-basics",
+    "/investors/insights/3-things-stablecoins",
+    "/investors/insights/cryptocurrency-storage",
+    "/investors/insights/what-blockchain",
+    "/investors/insights/cryptocurrency-related-stock-scams",
+    "/investors/insights/avoiding-relationship-investment-scams",
+]
+
 # Only follow links whose path starts with one of these prefixes.
 ALLOWED_PREFIXES = (
     "/investors/investing",
@@ -253,10 +270,11 @@ def fetch(session, url: str, timeout: int) -> str:
     return html
 
 
-def crawl(max_pages: int, base_delay: float, proxy: str | None) -> None:
+def crawl(max_pages: int, base_delay: float, proxy: str | None,
+          seeds: list[str] = SEEDS, follow_links: bool = True) -> None:
     queue: deque[str] = deque()
     seen: set[str] = set()
-    for s in SEEDS:
+    for s in seeds:
         u = f"{BASE}{s}"
         if u not in seen:
             seen.add(u)
@@ -292,10 +310,11 @@ def crawl(max_pages: int, base_delay: float, proxy: str | None) -> None:
 
             data = extract_content(html, url)
             if data:
-                for link in data["links"]:
-                    if link not in seen:
-                        seen.add(link)
-                        queue.append(link)
+                if follow_links:
+                    for link in data["links"]:
+                        if link not in seen:
+                            seen.add(link)
+                            queue.append(link)
                 if data["save"]:
                     out = write_markdown(url, data)
                     saved += 1
@@ -324,8 +343,17 @@ def main() -> None:
                     help="base politeness delay between requests, seconds")
     ap.add_argument("--proxy", default=None,
                     help="proxy URL, e.g. http://user:pass@host:port")
+    ap.add_argument("--crypto", action="store_true",
+                    help="targeted run: only FINRA's crypto investor-education "
+                         "pages, link-following OFF (tiny request footprint)")
+    ap.add_argument("--no-follow", action="store_true",
+                    help="fetch only the seed URLs; don't crawl discovered links")
     args = ap.parse_args()
-    crawl(args.max_pages, base_delay=args.delay, proxy=args.proxy)
+
+    seeds = CRYPTO_SEEDS if args.crypto else SEEDS
+    follow = not (args.no_follow or args.crypto)
+    crawl(args.max_pages, base_delay=args.delay, proxy=args.proxy,
+          seeds=seeds, follow_links=follow)
 
 
 if __name__ == "__main__":

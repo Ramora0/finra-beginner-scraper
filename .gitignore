@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Local agent memory / scratch notes — not for publishing
+memory/
